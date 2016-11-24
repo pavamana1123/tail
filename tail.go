@@ -7,18 +7,18 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/pavamana1123/tail/ratelimiter"
+	"github.com/pavamana1123/tail/util"
+	"github.com/pavamana1123/tail/watch"
+	"gopkg.in/tomb.v1"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/hpcloud/tail/ratelimiter"
-	"github.com/hpcloud/tail/util"
-	"github.com/hpcloud/tail/watch"
-	"gopkg.in/tomb.v1"
 )
 
 var (
@@ -68,6 +68,7 @@ type Config struct {
 	Follow      bool // Continue looking for new lines (tail -f)
 	MaxLineSize int  // If non-zero, split longer lines into multiple lines
 
+	PosFile string
 	// Logger, when nil, is set to tail.DefaultLogger
 	// To disable logging: set field to tail.DiscardingLogger
 	Logger logger
@@ -84,7 +85,8 @@ type Tail struct {
 	watcher watch.FileWatcher
 	changes *watch.FileChanges
 
-	tomb.Tomb // provides: Done, Kill, Dying
+	tomb.Tomb   // provides: Done, Kill, Dying
+	watcherTomb *tomb.Tomb
 
 	lk sync.Mutex
 }
@@ -130,6 +132,8 @@ func TailFile(filename string, config Config) (*Tail, error) {
 		}
 	}
 
+	t.watcherTomb = new(tomb.Tomb)
+
 	go t.tailFileSync()
 
 	return t, nil
@@ -160,8 +164,34 @@ func (tail *Tail) Tell() (offset int64, err error) {
 
 // Stop stops the tailing activity.
 func (tail *Tail) Stop() error {
-	tail.Kill(nil)
-	return tail.Wait()
+
+	defer func() {
+		tail.Kill(nil)
+		tail.Wait()
+	}()
+
+	if tail.Config.PosFile != "" {
+
+		newPos, err := tail.Tell()
+		if err != nil {
+			log.Println("TailReader: Unable to get position, not updating. ", err)
+			return err
+		}
+
+		log.Println("TailReader:Tell() position", newPos)
+
+		err = ioutil.WriteFile(tail.Config.PosFile, []byte(strconv.FormatInt(newPos, 10)), 0644)
+		if err != nil {
+			log.Println("Failed to update position", newPos, err)
+			return err
+		}
+
+		log.Println("Updated position", newPos)
+
+	}
+
+	return nil
+
 }
 
 // StopAtEOF stops tailing as soon as the end of the file is reached.
@@ -207,6 +237,25 @@ func (tail *Tail) reopen() error {
 	return nil
 }
 
+func (tail *Tail) reopenTarget() error {
+	tail.renewWatcher()
+	return tail.reopen()
+}
+
+func (tail *Tail) renewWatcher() {
+	tail.closeWatcher()
+
+	tail.watcher = watch.NewInotifyFileWatcher(tail.Filename)
+	tail.changes = nil
+
+	tail.watcherTomb = new(tomb.Tomb)
+}
+
+func (tail *Tail) closeWatcher() {
+	tail.watcherTomb.Kill(nil)
+	tail.watcherTomb.Wait()
+}
+
 func (tail *Tail) readLine() (string, error) {
 	tail.lk.Lock()
 	line, err := tail.reader.ReadString('\n')
@@ -224,6 +273,7 @@ func (tail *Tail) readLine() (string, error) {
 }
 
 func (tail *Tail) tailFileSync() {
+	defer tail.closeWatcher()
 	defer tail.Done()
 	defer tail.close()
 
@@ -241,7 +291,7 @@ func (tail *Tail) tailFileSync() {
 	// Seek to requested location on first open of the file.
 	if tail.Location != nil {
 		_, err := tail.file.Seek(tail.Location.Offset, tail.Location.Whence)
-		tail.Logger.Printf("Seeked %s - %+v\n", tail.Filename, tail.Location)
+		// tail.Logger.Printf("Seeked %s - %+v\n", tail.Filename, tail.Location)
 		if err != nil {
 			tail.Killf("Seek error on %s: %s", tail.Filename, err)
 			return
@@ -260,6 +310,8 @@ func (tail *Tail) tailFileSync() {
 			// grab the position in case we need to back up in the event of a half-line
 			offset, err = tail.Tell()
 			if err != nil {
+				log.Println("Tell:", err.Error())
+
 				tail.Kill(err)
 				return
 			}
@@ -273,9 +325,7 @@ func (tail *Tail) tailFileSync() {
 			if cooloff {
 				// Wait a second before seeking till the end of
 				// file when rate limit is reached.
-				msg := fmt.Sprintf(
-					"Too much log activity; waiting a second " +
-						"before resuming tailing")
+				msg := fmt.Sprintf("Too much log activity; waiting a second before resuming tailing")
 				tail.Lines <- &Line{msg, time.Now(), fmt.Errorf(msg)}
 				select {
 				case <-time.After(time.Second):
@@ -283,7 +333,8 @@ func (tail *Tail) tailFileSync() {
 					return
 				}
 				if err := tail.seekEnd(); err != nil {
-					tail.Kill(err)
+					log.Println("seekEnd:", err.Error())
+
 					return
 				}
 			}
@@ -301,6 +352,7 @@ func (tail *Tail) tailFileSync() {
 				err := tail.seekTo(SeekInfo{Offset: offset, Whence: 0})
 				if err != nil {
 					tail.Kill(err)
+
 					return
 				}
 			}
@@ -336,13 +388,16 @@ func (tail *Tail) tailFileSync() {
 // moved or truncated. When moved or deleted - the file will be
 // reopened if ReOpen is true. Truncated files are always reopened.
 func (tail *Tail) waitForChanges() error {
+
 	if tail.changes == nil {
 		pos, err := tail.file.Seek(0, os.SEEK_CUR)
 		if err != nil {
+			log.Println("tail.file.Seek:", err.Error())
 			return err
 		}
-		tail.changes, err = tail.watcher.ChangeEvents(&tail.Tomb, pos)
+		tail.changes, err = tail.watcher.ChangeEvents(tail.watcherTomb, pos)
 		if err != nil {
+			log.Println("tail.watcher.ChangeEvents:", err.Error())
 			return err
 		}
 	}
@@ -365,8 +420,17 @@ func (tail *Tail) waitForChanges() error {
 			tail.Logger.Printf("Stopping tail as file no longer exists: %s", tail.Filename)
 			return ErrStop
 		}
+	case <-tail.changes.SymLinkChanged:
+		// Always reopen files if symlink target is changed (Follow is true)
+		tail.Logger.Printf("Re-opening new symlink target file %s ...", tail.Filename)
+		if err := tail.reopenTarget(); err != nil {
+			return err
+		}
+		tail.Logger.Printf("Successfully opened %s", tail.Filename)
+		tail.openReader()
+		return nil
 	case <-tail.changes.Truncated:
-		// Always reopen truncated files (Follow is true)
+		// Always reopen files if truncated (Follow is true)
 		tail.Logger.Printf("Re-opening truncated file %s ...", tail.Filename)
 		if err := tail.reopen(); err != nil {
 			return err

@@ -5,13 +5,14 @@ package watch
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-
 	"github.com/hpcloud/tail/util"
-
 	"gopkg.in/fsnotify.v1"
 	"gopkg.in/tomb.v1"
+	"log"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
 )
 
 // InotifyFileWatcher uses inotify to monitor file changes.
@@ -19,6 +20,10 @@ type InotifyFileWatcher struct {
 	Filename string
 	Size     int64
 }
+
+var (
+	wg sync.WaitGroup
+)
 
 func NewInotifyFileWatcher(filename string) *InotifyFileWatcher {
 	fw := &InotifyFileWatcher{filepath.Clean(filename), 0}
@@ -75,9 +80,86 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	fw.Size = pos
 
 	go func() {
+		wg.Wait()
+		t.Done()
+	}()
+
+	// Polling func for SymLinkChange
+
+	go func() {
+
+		fileInfo, err := os.Lstat(fw.Filename)
+		if err != nil {
+			log.Println("Error: Unable to open file: ", err.Error())
+			return
+		}
+
+		if fileInfo.Mode()&os.ModeSymlink != os.ModeSymlink {
+			return
+		}
+
+		// log.Println("inside inotify.go sym")
+
+		wg.Add(1)
+		defer wg.Done()
+
+		for {
+
+			// Fetching fileinfo for current link
+			fileOld, err := os.Open(fw.Filename)
+			if err != nil {
+				log.Println("Symlink poll error on file:", fw.Filename, err.Error())
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			fileOldInfo, err := fileOld.Stat()
+			if err != nil {
+				log.Println("Symlink poll error on stat:", fw.Filename, err.Error())
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			time.Sleep(5 * time.Second)
+
+			// Fetching fileinfo for cuurent link after 5 sec
+			fileNew, err := os.Open(fw.Filename)
+			if err != nil {
+				log.Println("Symlink poll error on file:", fw.Filename, err.Error())
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			fileNewInfo, err := fileNew.Stat()
+			if err != nil {
+				log.Println("Symlink poll error on stat:", fw.Filename, err.Error())
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			// send to event channel if symlink target is changed
+			if !os.SameFile(fileOldInfo, fileNewInfo) {
+
+				changes.NotifySymLinkChanged()
+			}
+			select {
+			case <-t.Dying():
+				// log.Println("sym dying")
+				return
+			default:
+			}
+
+		}
+	}()
+
+	// Event notification func for other changes
+	go func() {
+
+		wg.Add(1)
+		defer wg.Done()
 		defer RemoveWatch(fw.Filename)
 
 		events := Events(fw.Filename)
+
+		// log.Println("inside inotify.go notify")
 
 		for {
 			prevSize := fw.Size
@@ -87,10 +169,13 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 			select {
 			case evt, ok = <-events:
+				log.Println("evt:", evt, "ok", ok)
 				if !ok {
 					return
 				}
+				break
 			case <-t.Dying():
+				// log.Println("inotify dying")
 				return
 			}
 
@@ -120,6 +205,7 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 					changes.NotifyModified()
 				}
 				prevSize = fw.Size
+
 			}
 		}
 	}()

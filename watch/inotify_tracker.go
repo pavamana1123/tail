@@ -134,7 +134,7 @@ func remove(winfo *watchInfo) {
 // Events returns a channel to which FileEvents corresponding to the input filename
 // will be sent. This channel will be closed when removeWatch is called on this
 // filename.
-func Events(fname string) <-chan fsnotify.Event {
+func Events(fname string) chan fsnotify.Event {
 	shared.mux.Lock()
 	defer shared.mux.Unlock()
 
