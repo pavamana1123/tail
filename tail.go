@@ -57,6 +57,7 @@ type logger interface {
 // Config is used to specify how a file must be tailed.
 type Config struct {
 	// File-specifc
+	BufferSize  int
 	Location    *SeekInfo // Seek to this location before tailing
 	ReOpen      bool      // Reopen recreated files (tail -F)
 	MustExist   bool      // Fail early if the file does not exist
@@ -109,7 +110,7 @@ func TailFile(filename string, config Config) (*Tail, error) {
 
 	t := &Tail{
 		Filename: filename,
-		Lines:    make(chan *Line),
+		Lines:    make(chan *Line, config.BufferSize),
 		Config:   config,
 	}
 
@@ -163,35 +164,9 @@ func (tail *Tail) Tell() (offset int64, err error) {
 }
 
 // Stop stops the tailing activity.
-func (tail *Tail) Stop() error {
-
-	defer func() {
-		tail.Kill(nil)
-		tail.Wait()
-	}()
-
-	if tail.Config.PosFile != "" {
-
-		newPos, err := tail.Tell()
-		if err != nil {
-			log.Println("TailReader: Unable to get position, not updating. ", err)
-			return err
-		}
-
-		log.Println("TailReader:Tell() position", newPos)
-
-		err = ioutil.WriteFile(tail.Config.PosFile, []byte(strconv.FormatInt(newPos, 10)), 0644)
-		if err != nil {
-			log.Println("Failed to update position", newPos, err)
-			return err
-		}
-
-		log.Println("Updated position", newPos)
-
-	}
-
-	return nil
-
+func (tail *Tail) Stop() {
+	tail.Kill(nil)
+	tail.Wait()
 }
 
 // StopAtEOF stops tailing as soon as the end of the file is reached.
@@ -203,6 +178,25 @@ func (tail *Tail) StopAtEOF() error {
 var errStopAtEOF = errors.New("tail: stop at eof")
 
 func (tail *Tail) close() {
+	if tail.Config.PosFile != "" {
+
+		newPos, err := tail.Tell()
+		if err != nil {
+			log.Println("TailReader: Unable to get position, not updating. ", err)
+			return
+		}
+
+		log.Println("TailReader:Tell() position", newPos)
+
+		err = ioutil.WriteFile(tail.Config.PosFile, []byte(strconv.FormatInt(newPos, 10)), 0644)
+		if err != nil {
+			log.Println("Failed to update position", newPos, err)
+			return
+		}
+
+		log.Println("Updated position", newPos)
+
+	}
 	close(tail.Lines)
 	tail.closeFile()
 }
@@ -273,9 +267,11 @@ func (tail *Tail) readLine() (string, error) {
 }
 
 func (tail *Tail) tailFileSync() {
-	defer tail.closeWatcher()
-	defer tail.Done()
-	defer tail.close()
+	defer func() {
+		tail.closeWatcher()
+		tail.close()
+		tail.Done()
+	}()
 
 	if !tail.MustExist {
 		// deferred first open.

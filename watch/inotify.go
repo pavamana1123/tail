@@ -142,7 +142,6 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 			}
 			select {
 			case <-t.Dying():
-				// log.Println("sym dying")
 				return
 			default:
 			}
@@ -169,7 +168,6 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 			select {
 			case evt, ok = <-events:
-				log.Println("evt:", evt, "ok", ok)
 				if !ok {
 					return
 				}
