@@ -64,70 +64,7 @@ func TestSymlinkChange(t *testing.T) {
 
 }
 
-func TestNoLogLossAfterSymLinkChangeAndBufferOverflow(t *testing.T) {
-	testName := "symtest_no_log_loss"
-	testFile1 := "symtest_no_log_loss1.log"
-	testFile2 := "symtest_no_log_loss2.log"
-	testLink := "symtest_no_log_loss"
-
-	fourMillionBytes := make([]byte, 4000000)
-
-	for i := 0; i < 4000000-2; i += 2 {
-		fourMillionBytes[i] = 65
-		fourMillionBytes[i+1] = 10
-	}
-
-	fourMillionBytes[4000000-2] = 66
-	fourMillionBytes[4000000-1] = 10
-
-	twoMillionLines := string(fourMillionBytes)
-
-	tailTest := NewTailTest(testName, t)
-
-	tailTest.CreateFile(testFile1, "")
-	tailTest.CreateFile(testFile2, "")
-	tailTest.CreateLink(testFile1, testLink)
-
-	tHandler := tailTest.StartTail(testLink, defaultConfig)
-	defer tailTest.Cleanup(tHandler, true)
-
-	tailTest.AppendFile(testLink, "line1\n")
-	log.Println("Waiting for line1")
-
-	testLine := <-tHandler.Lines
-
-	if testLine.Text != "line1" {
-		t.Error("line1 not recieved")
-		t.Fail()
-	} else {
-		log.Println("Line1 recieved")
-	}
-
-	tailTest.Relink(testFile2, testLink)
-	then := time.Now()
-	tailTest.AppendFile(testLink, twoMillionLines)
-
-	log.Println("Symlink changed...waiting to detect")
-	log.Println("Waiting for line2")
-
-	for i := 0; i < 2000000-1; i++ {
-		testLine = <-tHandler.Lines
-		if testLine.Text != "A" {
-			t.Error("Line received was not A")
-			t.Fail()
-		}
-	}
-
-	testLine = <-tHandler.Lines
-	if testLine.Text != "B" {
-		t.Error("Last line was not B")
-		t.Fail()
-	}
-
-	log.Println("All lines recieved after", time.Since(then))
-}
-
-func TestNoLogLossAfterSymLinkChangeAndLogging(t *testing.T) {
+func TestNoLogLossAfterSymLinkChange(t *testing.T) {
 	testName := "symtest_no_log_loss_with_logging"
 	testFile1 := "symtest_no_log_loss_with_logging1.log"
 	testFile2 := "symtest_no_log_loss_with_logging2.log"
@@ -182,6 +119,47 @@ func TestNoLogLossAfterSymLinkChangeAndLogging(t *testing.T) {
 	tailTest.Relink(testFile2, testLink)
 	log.Println("Symlink changed after", time.Since(then), "of logging with line recieved", totalLines)
 	<-done
+
+	log.Println("All lines recieved after", time.Since(then))
+}
+
+func TestNoLogLossAfterBufferOverflow(t *testing.T) {
+	testName := "symtest_no_log_loss_with_buffer_ovf"
+	testFile := "symtest_no_log_loss_with_buffer_ovf.log"
+
+	fourMillionBytes := make([]byte, 4000000)
+
+	for i := 0; i < 4000000-2; i += 2 {
+		fourMillionBytes[i] = 65
+		fourMillionBytes[i+1] = 10
+	}
+
+	fourMillionBytes[4000000-2] = 66
+	fourMillionBytes[4000000-1] = 10
+
+	twoMillionLines := string(fourMillionBytes)
+
+	tailTest := NewTailTest(testName, t)
+	tailTest.CreateFile(testFile, "")
+
+	tHandler := tailTest.StartTail(testFile, defaultConfig)
+	defer tailTest.Cleanup(tHandler, true)
+
+	tailTest.AppendFile(testFile, twoMillionLines)
+
+	for i := 0; i < 2000000-1; i++ {
+		testLine = <-tHandler.Lines
+		if testLine.Text != "A" {
+			t.Error("Line received was not A")
+			t.Fail()
+		}
+	}
+
+	testLine = <-tHandler.Lines
+	if testLine.Text != "B" {
+		t.Error("Last line was not B")
+		t.Fail()
+	}
 
 	log.Println("All lines recieved after", time.Since(then))
 }
