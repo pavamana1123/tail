@@ -161,7 +161,7 @@ func TestNoLogLossAfterBufferOverflow(t *testing.T) {
 		t.Fail()
 	}
 
-	log.Println("All lines recieved after", time.Since(then))
+	log.Println("All lines recieved")
 }
 
 func (t TailTest) CreateLink(name string, link string) {
