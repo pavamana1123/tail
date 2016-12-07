@@ -148,14 +148,14 @@ func TestNoLogLossAfterBufferOverflow(t *testing.T) {
 	tailTest.AppendFile(testFile, twoMillionLines)
 
 	for i := 0; i < 2000000-1; i++ {
-		testLine = <-tHandler.Lines
+		testLine := <-tHandler.Lines
 		if testLine.Text != "A" {
 			t.Error("Line received was not A")
 			t.Fail()
 		}
 	}
 
-	testLine = <-tHandler.Lines
+	testLine := <-tHandler.Lines
 	if testLine.Text != "B" {
 		t.Error("Last line was not B")
 		t.Fail()
