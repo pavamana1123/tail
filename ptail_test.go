@@ -173,11 +173,11 @@ func TestNoLogLossAfterSymLinkChangeAndLogging(t *testing.T) {
 	go func() {
 		for i := 0; i < 1000; i++ {
 			tailTest.AppendFile(testLink, strconv.Itoa(i)+"\n")
-			<-time.After(100 * time.Millisecond)
+			<-time.After(10 * time.Millisecond)
 		}
 	}()
 
-	<-time.After(50 * time.Second)
+	<-time.After(5 * time.Second)
 
 	tailTest.Relink(testFile2, testLink)
 	log.Println("Symlink changed after", time.Since(then), "of logging with line recieved", totalLines)
