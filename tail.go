@@ -164,9 +164,9 @@ func (tail *Tail) Tell() (offset int64, err error) {
 }
 
 // Stop stops the tailing activity.
-func (tail *Tail) Stop() {
+func (tail *Tail) Stop() error {
 	tail.Kill(nil)
-	tail.Wait()
+	return tail.Wait()
 }
 
 // StopAtEOF stops tailing as soon as the end of the file is reached.
@@ -404,7 +404,9 @@ func (tail *Tail) waitForChanges() error {
 	case <-tail.changes.Deleted:
 		tail.changes = nil
 		if tail.ReOpen {
+
 			// XXX: we must not log from a library.
+			// TODO : Why?
 			tail.Logger.Printf("Re-opening moved/deleted file %s ...", tail.Filename)
 			if err := tail.reopen(); err != nil {
 				return err

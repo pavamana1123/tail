@@ -79,13 +79,9 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	changes := NewFileChanges()
 	fw.Size = pos
 
-	go func() {
-		wg.Wait()
-		t.Done()
-	}()
+	stopPoll := make(chan struct{})
 
 	// Polling func for SymLinkChange
-
 	go func() {
 
 		fileInfo, err := os.Lstat(fw.Filename)
@@ -94,56 +90,41 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 			return
 		}
 
+		// Return if not a symlink
 		if fileInfo.Mode()&os.ModeSymlink != os.ModeSymlink {
 			return
 		}
 
-		// log.Println("inside inotify.go sym")
-
-		wg.Add(1)
-		defer wg.Done()
+		// wg.Add(1)
+		// defer wg.Done()
 
 		for {
-
-			// Fetching fileinfo for current link
-			fileOld, err := os.Open(fw.Filename)
-			if err != nil {
-				log.Println("Symlink poll error on file:", fw.Filename, err.Error())
-				time.Sleep(5 * time.Second)
-				continue
-			}
-			fileOldInfo, err := fileOld.Stat()
-			if err != nil {
-				log.Println("Symlink poll error on stat:", fw.Filename, err.Error())
-				time.Sleep(5 * time.Second)
-				continue
-			}
-
-			time.Sleep(5 * time.Second)
-
-			// Fetching fileinfo for cuurent link after 5 sec
-			fileNew, err := os.Open(fw.Filename)
-			if err != nil {
-				log.Println("Symlink poll error on file:", fw.Filename, err.Error())
-				time.Sleep(5 * time.Second)
-				continue
-			}
-			fileNewInfo, err := fileNew.Stat()
-			if err != nil {
-				log.Println("Symlink poll error on stat:", fw.Filename, err.Error())
-				time.Sleep(5 * time.Second)
-				continue
-			}
-
-			// send to event channel if symlink target is changed
-			if !os.SameFile(fileOldInfo, fileNewInfo) {
-
-				changes.NotifySymLinkChanged()
-			}
 			select {
-			case <-t.Dying():
+			case <-stopPoll:
 				return
 			default:
+
+				targetOld, err := os.Readlink(fw.Filename)
+				if err != nil {
+					log.Println("Readlink old:", fw.Filename, err.Error())
+					<-time.After(100 * time.Millisecond)
+					continue
+				}
+
+				<-time.After(1 * time.Second)
+
+				targetNew, err := os.Readlink(fw.Filename)
+				if err != nil {
+					log.Println("Readlink new:", fw.Filename, err.Error())
+					<-time.After(5 * time.Second)
+					continue
+				}
+
+				// send to event channel if symlink target is changed
+				if targetNew != targetOld {
+					changes.NotifySymLinkChanged()
+				}
+
 			}
 
 		}
@@ -152,13 +133,13 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	// Event notification func for other changes
 	go func() {
 
-		wg.Add(1)
-		defer wg.Done()
-		defer RemoveWatch(fw.Filename)
+		defer func() {
+			RemoveWatch(fw.Filename)
+			stopPoll <- struct{}{}
+			t.Done()
+		}()
 
 		events := Events(fw.Filename)
-
-		// log.Println("inside inotify.go notify")
 
 		for {
 			prevSize := fw.Size
@@ -173,7 +154,6 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 				}
 				break
 			case <-t.Dying():
-				// log.Println("inotify dying")
 				return
 			}
 
