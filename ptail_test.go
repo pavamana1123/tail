@@ -143,7 +143,6 @@ func TestNoLogLossAfterBufferOverflow(t *testing.T) {
 	tailTest.CreateFile(testFile, "")
 
 	tHandler := tailTest.StartTail(testFile, defaultConfig)
-	defer tailTest.Cleanup(tHandler, true)
 
 	tailTest.AppendFile(testFile, twoMillionLines)
 
