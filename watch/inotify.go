@@ -79,7 +79,7 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	changes := NewFileChanges()
 	fw.Size = pos
 
-	stopPoll := make(chan struct{})
+	stopPoll := make(chan struct{}, 1)
 
 	// Polling func for SymLinkChange
 	go func() {
@@ -101,6 +101,7 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 		for {
 			select {
 			case <-stopPoll:
+				log.Println("read from stopPoll")
 				return
 			default:
 
