@@ -464,7 +464,7 @@ func (tail *Tail) seekTo(pos SeekInfo) error {
 // if necessary. Return false if rate limit is reached.
 func (tail *Tail) sendLine(line string) bool {
 	now := time.Now()
-	// lines := []string{line}
+	lines := []string{line}
 
 	// // Split longer lines
 	// if tail.MaxLineSize > 0 && len(line) > tail.MaxLineSize {

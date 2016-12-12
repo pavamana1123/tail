@@ -267,6 +267,47 @@ func TestPReadSlice(t *testing.T) {
 
 }
 
+func TestImpulse(t *testing.T) {
+	testName := "impulse"
+	testFile := "impulse.log"
+
+	tailTest := NewTailTest(testName, t)
+	tailTest.CreateFile(testFile, "")
+
+	var impulseConfig Config = Config{
+		BufferSize:  1000000,
+		MaxLineSize: 1048576,
+		Follow:      true,
+		ReOpen:      true,
+		Poll:        false,
+		MustExist:   true,
+		PosFile:     "",
+		Location:    &SeekInfo{Offset: 0, Whence: 0}}
+
+	tHandler := tailTest.StartTail(testFile, impulseConfig)
+
+	length := uint64(1024)
+
+	lineBytes := make([]byte, length)
+
+	for i := uint64(0); i < length-1; i++ {
+		lineBytes[i] = 65
+	}
+	lineBytes[len(lineBytes)-1] = 10
+
+	linesBytes := lineBytes
+	for i := uint64(0); i < impulseConfig.BufferSize; i++ {
+		linesBytes = append(linesBytes, lineBytes...)
+	}
+
+	tailTest.AppendFile(testFile, string(linesBytes))
+
+	for i := 0; i < impulseConfig.BufferSize; i++ {
+		log.Println(<-tHandler.Lines.Text)
+	}
+
+}
+
 func (t TailTest) CreateLink(name string, link string) {
 	_, err := exec.Command("ln", "-sf", name, t.path+"/"+link).Output()
 	if err != nil {
