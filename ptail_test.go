@@ -296,14 +296,14 @@ func TestImpulse(t *testing.T) {
 	lineBytes[len(lineBytes)-1] = 10
 
 	linesBytes := lineBytes
-	for i := uint64(0); i < impulseConfig.BufferSize; i++ {
+	for i := 0; i < impulseConfig.BufferSize; i++ {
 		linesBytes = append(linesBytes, lineBytes...)
 	}
 
 	tailTest.AppendFile(testFile, string(linesBytes))
 
 	for i := 0; i < impulseConfig.BufferSize; i++ {
-		log.Println(<-tHandler.Lines.Text)
+		log.Println(<-tHandler.Lines)
 	}
 
 }
