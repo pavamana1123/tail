@@ -247,6 +247,7 @@ func (tail *Tail) closeWatcher() {
 }
 
 func (tail *Tail) readLine() (string, error) {
+
 	tail.lk.Lock()
 	lineBytes, err := tail.reader.ReadSlice(10) //10 - byte value for \n
 	tail.lk.Unlock()
@@ -463,16 +464,16 @@ func (tail *Tail) seekTo(pos SeekInfo) error {
 // if necessary. Return false if rate limit is reached.
 func (tail *Tail) sendLine(line string) bool {
 	now := time.Now()
-	lines := []string{line}
+	// lines := []string{line}
 
-	// Split longer lines
-	if tail.MaxLineSize > 0 && len(line) > tail.MaxLineSize {
-		lines = util.PartitionString(line, tail.MaxLineSize)
-	}
+	// // Split longer lines
+	// if tail.MaxLineSize > 0 && len(line) > tail.MaxLineSize {
+	// 	lines = util.PartitionString(line, tail.MaxLineSize)
+	// }
 
-	for _, line := range lines {
-		tail.Lines <- &Line{line, now, nil}
-	}
+	// for _, line := range lines {
+	tail.Lines <- &Line{line, now, nil}
+	// }
 
 	if tail.Config.RateLimiter != nil {
 		ok := tail.Config.RateLimiter.Pour(uint16(len(lines)))
