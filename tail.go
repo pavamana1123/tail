@@ -57,7 +57,6 @@ type logger interface {
 // Config is used to specify how a file must be tailed.
 type Config struct {
 	// File-specifc
-	BufferSize  int
 	Location    *SeekInfo // Seek to this location before tailing
 	ReOpen      bool      // Reopen recreated files (tail -F)
 	MustExist   bool      // Fail early if the file does not exist
@@ -110,7 +109,7 @@ func TailFile(filename string, config Config) (*Tail, error) {
 
 	t := &Tail{
 		Filename: filename,
-		Lines:    make(chan *Line, config.BufferSize),
+		Lines:    make(chan *Line),
 		Config:   config,
 	}
 
@@ -314,23 +313,24 @@ func (tail *Tail) tailFileSync() {
 
 		// Process `line` even if err is EOF.
 		if err == nil || err == bufio.ErrBufferFull {
-			cooloff := !tail.sendLine(line)
-			if cooloff {
-				// Wait a second before seeking till the end of
-				// file when rate limit is reached.
-				msg := fmt.Sprintf("Too much log activity; waiting a second before resuming tailing")
-				tail.Lines <- &Line{msg, time.Now(), fmt.Errorf(msg)}
-				select {
-				case <-time.After(time.Second):
-				case <-tail.Dying():
-					return
-				}
-				if err := tail.seekEnd(); err != nil {
-					log.Println("seekEnd:", err.Error())
+			// cooloff := !tail.sendLine(line)
+			tail.sendLine(line)
+			// if cooloff {
+			// 	// Wait a second before seeking till the end of
+			// 	// file when rate limit is reached.
+			// 	msg := fmt.Sprintf("Too much log activity; waiting a second before resuming tailing")
+			// 	tail.Lines <- &Line{msg, time.Now(), fmt.Errorf(msg)}
+			// 	select {
+			// 	case <-time.After(time.Second):
+			// 	case <-tail.Dying():
+			// 		return
+			// 	}
+			// 	if err := tail.seekEnd(); err != nil {
+			// 		log.Println("seekEnd:", err.Error())
 
-					return
-				}
-			}
+			// 		return
+			// 	}
+			// }
 		} else if err == io.EOF {
 			if !tail.Follow {
 				if line != "" {
@@ -464,7 +464,7 @@ func (tail *Tail) seekTo(pos SeekInfo) error {
 // if necessary. Return false if rate limit is reached.
 func (tail *Tail) sendLine(line string) bool {
 	now := time.Now()
-	lines := []string{line}
+	// lines := []string{line}
 
 	// // Split longer lines
 	// if tail.MaxLineSize > 0 && len(line) > tail.MaxLineSize {
@@ -475,14 +475,14 @@ func (tail *Tail) sendLine(line string) bool {
 	tail.Lines <- &Line{line, now, nil}
 	// }
 
-	if tail.Config.RateLimiter != nil {
-		ok := tail.Config.RateLimiter.Pour(uint16(len(lines)))
-		if !ok {
-			tail.Logger.Printf("Leaky bucket full (%v); entering 1s cooloff period.\n",
-				tail.Filename)
-			return false
-		}
-	}
+	// if tail.Config.RateLimiter != nil {
+	// 	ok := tail.Config.RateLimiter.Pour(uint16(len(lines)))
+	// 	if !ok {
+	// 		tail.Logger.Printf("Leaky bucket full (%v); entering 1s cooloff period.\n",
+	// 			tail.Filename)
+	// 		return false
+	// 	}
+	// }
 
 	return true
 }
