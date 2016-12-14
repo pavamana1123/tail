@@ -269,9 +269,15 @@ func (tail *Tail) readLine() (string, error) {
 
 func (tail *Tail) tailFileSync() {
 	defer func() {
+		log.Println("moving inside closeWatcher()")
 		tail.closeWatcher()
+
+		log.Println("moving inside close()")
 		tail.close()
+
+		log.Println("moving inside Done()")
 		tail.Done()
+
 	}()
 
 	if !tail.MustExist {
@@ -318,24 +324,7 @@ func (tail *Tail) tailFileSync() {
 
 		// Process `line` even if err is EOF.
 		if err == nil || err == bufio.ErrBufferFull {
-			// cooloff := !tail.sendLine(line)
 			tail.sendLine(line)
-			// if cooloff {
-			// 	// Wait a second before seeking till the end of
-			// 	// file when rate limit is reached.
-			// 	msg := fmt.Sprintf("Too much log activity; waiting a second before resuming tailing")
-			// 	tail.Lines <- &Line{msg, time.Now(), fmt.Errorf(msg)}
-			// 	select {
-			// 	case <-time.After(time.Second):
-			// 	case <-tail.Dying():
-			// 		return
-			// 	}
-			// 	if err := tail.seekEnd(); err != nil {
-			// 		log.Println("seekEnd:", err.Error())
-
-			// 		return
-			// 	}
-			// }
 		} else if err == io.EOF {
 			if !tail.Follow {
 				if line != "" {
