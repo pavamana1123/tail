@@ -179,6 +179,8 @@ var errStopAtEOF = errors.New("tail: stop at eof")
 func (tail *Tail) close() {
 	if tail.Config.PosFile != "" {
 
+		log.Println("waiting for tell")
+
 		newPos, err := tail.Tell()
 		if err != nil {
 			log.Println("TailReader: Unable to get position, not updating. ", err)
@@ -192,6 +194,9 @@ func (tail *Tail) close() {
 		}
 
 	}
+
+	log.Println("pos file updated")
+
 	close(tail.Lines)
 	tail.closeFile()
 }
