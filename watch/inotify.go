@@ -136,7 +136,10 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 		defer func() {
 			RemoveWatch(fw.Filename)
+			log.Println("RemoveWatch(fw.Filename) done. Waiting to insert to struct")
+			log.Println("len:", len(stopPoll), "cap:", cap(stopPoll))
 			stopPoll <- struct{}{}
+			log.Println("inserted to struct")
 			t.Done()
 		}()
 
@@ -155,6 +158,7 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 				}
 				break
 			case <-t.Dying():
+				log.Println("<-t.Dying() in inotify")
 				return
 			}
 
