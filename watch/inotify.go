@@ -135,8 +135,9 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	go func() {
 
 		defer func() {
+			log.Println("Removing watch")
 			RemoveWatch(fw.Filename)
-			log.Println("RemoveWatch(fw.Filename) done. Waiting to insert to struct")
+			log.Println("Waiting to insert to struct")
 			log.Println("len:", len(stopPoll), "cap:", cap(stopPoll))
 			stopPoll <- struct{}{}
 			log.Println("inserted to struct")

@@ -270,7 +270,10 @@ func (tail *Tail) readLine() (string, error) {
 func (tail *Tail) tailFileSync() {
 	defer func() {
 		log.Println("moving inside closeWatcher()")
-		tail.closeWatcher()
+
+		if tail.changes != nil {
+			tail.closeWatcher()
+		}
 
 		log.Println("moving inside close()")
 		tail.close()
