@@ -22,10 +22,11 @@ import (
 
 func init() {
 	// Clear the temporary test directory
-	err := os.RemoveAll(".test")
-	if err != nil {
-		panic(err)
-	}
+
+	// err := os.RemoveAll(".test")
+	// if err != nil {
+	// 	panic(err)
+	// }
 }
 
 func TestMain(m *testing.M) {

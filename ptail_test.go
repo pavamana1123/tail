@@ -13,7 +13,6 @@ import (
 )
 
 var defaultConfig Config = Config{
-	BufferSize:  100,
 	MaxLineSize: 1048576,
 	Follow:      true,
 	ReOpen:      true,
@@ -170,7 +169,6 @@ func TestPPosFileUpdate(t *testing.T) {
 	testFile := "pos_file_update"
 
 	config := Config{
-		BufferSize:  100,
 		MaxLineSize: 1048576,
 		Follow:      true,
 		ReOpen:      true,
@@ -274,8 +272,9 @@ func TestImpulse(t *testing.T) {
 	tailTest := NewTailTest(testName, t)
 	tailTest.CreateFile(testFile, "")
 
+	bufferSize := 1024
+
 	var impulseConfig Config = Config{
-		BufferSize:  1000000,
 		MaxLineSize: 1048576,
 		Follow:      true,
 		ReOpen:      true,
@@ -296,14 +295,39 @@ func TestImpulse(t *testing.T) {
 	lineBytes[len(lineBytes)-1] = 10
 
 	linesBytes := lineBytes
-	for i := 0; i < impulseConfig.BufferSize; i++ {
+	for i := 0; i < bufferSize; i++ {
 		linesBytes = append(linesBytes, lineBytes...)
 	}
 
 	tailTest.AppendFile(testFile, string(linesBytes))
 
-	for i := 0; i < impulseConfig.BufferSize; i++ {
-		log.Println(<-tHandler.Lines)
+	for i := 0; i < bufferSize; i++ {
+		<-tHandler.Lines
+	}
+
+}
+
+func TestLoad(t *testing.T) {
+	testName := "TestLoad"
+	testFile := "TestLoad.log"
+
+	tailTest := NewTailTest(testName, t)
+
+	noOfLines := 1000000
+
+	var impulseConfig Config = Config{
+		MaxLineSize: 1048576,
+		Follow:      true,
+		ReOpen:      true,
+		Poll:        false,
+		MustExist:   true,
+		PosFile:     "",
+		Location:    &SeekInfo{Offset: 0, Whence: 0}}
+
+	tHandler := tailTest.StartTail(testFile, impulseConfig)
+
+	for i := 0; i < noOfLines; i++ {
+		<-tHandler.Lines
 	}
 
 }

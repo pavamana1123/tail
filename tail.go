@@ -305,6 +305,7 @@ func (tail *Tail) tailFileSync() {
 
 	var offset int64 = 0
 	var err error
+	var line string
 
 	// Read line by line.
 	for {
@@ -320,7 +321,7 @@ func (tail *Tail) tailFileSync() {
 			}
 		}
 
-		line, err := tail.readLine()
+		line, err = tail.readLine()
 
 		// Process `line` even if err is EOF.
 		if err == nil || err == bufio.ErrBufferFull {
