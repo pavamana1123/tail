@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -84,7 +85,9 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	// Polling func for SymLinkChange
 	go func() {
 
-		fileInfo, err := os.Lstat(fw.Filename)
+		symLinkPath := strings.SplitAfter(fw.Filename, "current")[0]
+
+		fileInfo, err := os.Lstat(symLinkPath)
 		if err != nil {
 			log.Println("Error: Unable to open file: ", err.Error())
 			return
@@ -101,11 +104,10 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 		for {
 			select {
 			case <-stopPoll:
-				log.Println("read from stopPoll")
 				return
 			default:
 
-				targetOld, err := os.Readlink(fw.Filename)
+				targetOld, err := os.Readlink(symLinkPath)
 				if err != nil {
 					log.Println("Readlink old:", fw.Filename, err.Error())
 					<-time.After(100 * time.Millisecond)
@@ -114,7 +116,7 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 				<-time.After(1 * time.Second)
 
-				targetNew, err := os.Readlink(fw.Filename)
+				targetNew, err := os.Readlink(symLinkPath)
 				if err != nil {
 					log.Println("Readlink new:", fw.Filename, err.Error())
 					<-time.After(5 * time.Second)
@@ -135,12 +137,8 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	go func() {
 
 		defer func() {
-			log.Println("Removing watch")
 			RemoveWatch(fw.Filename)
-			log.Println("Waiting to insert to struct")
-			log.Println("len:", len(stopPoll), "cap:", cap(stopPoll))
 			stopPoll <- struct{}{}
-			log.Println("inserted to struct")
 			t.Done()
 		}()
 
@@ -159,7 +157,6 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 				}
 				break
 			case <-t.Dying():
-				log.Println("<-t.Dying() in inotify")
 				return
 			}
 
