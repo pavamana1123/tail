@@ -101,8 +101,11 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 		// wg.Add(1)
 		// defer wg.Done()
 
+		var targetNew string
+		var targetOld string
+
 	retry:
-		targetOld, err := os.Readlink(symLinkPath)
+		targetOld, err = os.Readlink(symLinkPath)
 		if err != nil {
 			log.Println("Readlink old:", fw.Filename, err.Error())
 			<-time.After(1 * time.Second)
@@ -114,11 +117,9 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 			case <-stopPoll:
 				return
 			default:
-
-				targetNew, err := os.Readlink(symLinkPath)
+				targetNew, err = os.Readlink(symLinkPath)
 				if err != nil {
 					log.Println("Readlink new:", fw.Filename, err.Error())
-					<-time.After(5 * time.Second)
 					continue
 				} else {
 					if targetNew != targetOld {
@@ -126,9 +127,8 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 						targetOld = targetNew
 					}
 				}
-
 			}
-
+			<-time.After(1 * time.Second)
 		}
 	}()
 
