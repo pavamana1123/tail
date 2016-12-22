@@ -101,31 +101,30 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 		// wg.Add(1)
 		// defer wg.Done()
 
+	retry:
+		targetOld, err := os.Readlink(symLinkPath)
+		if err != nil {
+			log.Println("Readlink old:", fw.Filename, err.Error())
+			<-time.After(1 * time.Second)
+			goto retry
+		}
+
 		for {
 			select {
 			case <-stopPoll:
 				return
 			default:
 
-				targetOld, err := os.Readlink(symLinkPath)
-				if err != nil {
-					log.Println("Readlink old:", fw.Filename, err.Error())
-					<-time.After(100 * time.Millisecond)
-					continue
-				}
-
-				<-time.After(1 * time.Second)
-
 				targetNew, err := os.Readlink(symLinkPath)
 				if err != nil {
 					log.Println("Readlink new:", fw.Filename, err.Error())
 					<-time.After(5 * time.Second)
 					continue
-				}
-
-				// send to event channel if symlink target is changed
-				if targetNew != targetOld {
-					changes.NotifySymLinkChanged()
+				} else {
+					if targetNew != targetOld {
+						changes.NotifySymLinkChanged()
+						targetOld = targetNew
+					}
 				}
 
 			}
@@ -135,6 +134,7 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 	// Event notification func for other changes
 	go func() {
+		log.Println("iniside inotify")
 
 		defer func() {
 			RemoveWatch(fw.Filename)
@@ -152,6 +152,7 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 			select {
 			case evt, ok = <-events:
+				log.Println("recd evt:", evt)
 				if !ok {
 					return
 				}
