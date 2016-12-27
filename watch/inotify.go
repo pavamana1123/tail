@@ -5,15 +5,16 @@ package watch
 
 import (
 	"fmt"
-	"github.com/hpcloud/tail/util"
-	"gopkg.in/fsnotify.v1"
-	"gopkg.in/tomb.v1"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/hpcloud/tail/util"
+	"gopkg.in/fsnotify.v1"
+	"gopkg.in/tomb.v1"
 )
 
 // InotifyFileWatcher uses inotify to monitor file changes.
@@ -34,6 +35,7 @@ func NewInotifyFileWatcher(filename string) *InotifyFileWatcher {
 func (fw *InotifyFileWatcher) BlockUntilExists(t *tomb.Tomb) error {
 	err := WatchCreate(fw.Filename)
 	if err != nil {
+		log.Println("WatchCreate", err.Error())
 		return err
 	}
 	defer RemoveWatchCreate(fw.Filename)
@@ -98,11 +100,7 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 			return
 		}
 
-		// wg.Add(1)
-		// defer wg.Done()
-
-		var targetNew string
-		var targetOld string
+		var targetNew, targetOld string
 
 	retry:
 		targetOld, err = os.Readlink(symLinkPath)
@@ -120,7 +118,7 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 				targetNew, err = os.Readlink(symLinkPath)
 				if err != nil {
 					log.Println("Readlink new:", fw.Filename, err.Error())
-					continue
+					break
 				} else {
 					if targetNew != targetOld {
 						changes.NotifySymLinkChanged()
@@ -134,7 +132,6 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 	// Event notification func for other changes
 	go func() {
-		log.Println("iniside inotify")
 
 		defer func() {
 			RemoveWatch(fw.Filename)
@@ -152,7 +149,6 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 			select {
 			case evt, ok = <-events:
-				log.Println("recd evt:", evt)
 				if !ok {
 					return
 				}

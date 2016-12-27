@@ -7,10 +7,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/pavamana1123/tail/ratelimiter"
-	"github.com/pavamana1123/tail/util"
-	"github.com/pavamana1123/tail/watch"
-	"gopkg.in/tomb.v1"
 	"io"
 	"io/ioutil"
 	"log"
@@ -19,6 +15,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pavamana1123/tail/ratelimiter"
+	"github.com/pavamana1123/tail/util"
+	"github.com/pavamana1123/tail/watch"
+	"gopkg.in/tomb.v1"
 )
 
 var (
@@ -179,8 +180,6 @@ var errStopAtEOF = errors.New("tail: stop at eof")
 func (tail *Tail) close() {
 	if tail.Config.PosFile != "" {
 
-		log.Println("waiting for tell")
-
 		newPos, err := tail.Tell()
 		if err != nil {
 			log.Println("TailReader: Unable to get position, not updating. ", err)
@@ -194,8 +193,6 @@ func (tail *Tail) close() {
 		}
 
 	}
-
-	log.Println("pos file updated")
 
 	close(tail.Lines)
 	tail.closeFile()
@@ -216,7 +213,7 @@ func (tail *Tail) reopen() error {
 		if err != nil {
 			if os.IsNotExist(err) {
 				tail.Logger.Printf("Waiting for %s to appear...", tail.Filename)
-				if err := tail.watcher.BlockUntilExists(&tail.Tomb); err != nil {
+				if err := tail.watcher.BlockUntilExists(tail.watcherTomb); err != nil {
 					if err == tomb.ErrDying {
 						return err
 					}
@@ -269,16 +266,12 @@ func (tail *Tail) readLine() (string, error) {
 
 func (tail *Tail) tailFileSync() {
 	defer func() {
-		log.Println("moving inside closeWatcher()")
 
 		if tail.changes != nil {
+			log.Println()
 			tail.closeWatcher()
 		}
-
-		log.Println("moving inside close()")
 		tail.close()
-
-		log.Println("moving inside Done()")
 		tail.Done()
 
 	}()
@@ -397,15 +390,16 @@ func (tail *Tail) waitForChanges() error {
 	case <-tail.changes.Modified:
 		return nil
 	case <-tail.changes.Deleted:
-		tail.changes = nil
 		if tail.ReOpen {
 			// XXX: we must not log from a library.
 			tail.Logger.Printf("Re-opening moved/deleted file %s ...", tail.Filename)
 			if err := tail.reopen(); err != nil {
+				log.Println("tail.ReOpen:", err.Error())
 				return err
 			}
 			tail.Logger.Printf("Successfully reopened %s", tail.Filename)
 			tail.openReader()
+			tail.changes = nil
 			return nil
 		} else {
 			tail.Logger.Printf("Stopping tail as file no longer exists: %s", tail.Filename)
@@ -461,26 +455,9 @@ func (tail *Tail) seekTo(pos SeekInfo) error {
 // sendLine sends the line(s) to Lines channel, splitting longer lines
 // if necessary. Return false if rate limit is reached.
 func (tail *Tail) sendLine(line string) bool {
-	now := time.Now()
-	// lines := []string{line}
 
-	// // Split longer lines
-	// if tail.MaxLineSize > 0 && len(line) > tail.MaxLineSize {
-	// 	lines = util.PartitionString(line, tail.MaxLineSize)
-	// }
-
-	// for _, line := range lines {
-	tail.Lines <- &Line{line, now, nil}
-	// }
-
-	// if tail.Config.RateLimiter != nil {
-	// 	ok := tail.Config.RateLimiter.Pour(uint16(len(lines)))
-	// 	if !ok {
-	// 		tail.Logger.Printf("Leaky bucket full (%v); entering 1s cooloff period.\n",
-	// 			tail.Filename)
-	// 		return false
-	// 	}
-	// }
+	tail.Lines <- &Line{line, time.Now(), nil}
+	log.Println("Line:", line)
 
 	return true
 }
