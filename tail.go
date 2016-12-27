@@ -457,7 +457,6 @@ func (tail *Tail) seekTo(pos SeekInfo) error {
 func (tail *Tail) sendLine(line string) bool {
 
 	tail.Lines <- &Line{line, time.Now(), nil}
-	log.Println("Line:", line)
 
 	return true
 }
