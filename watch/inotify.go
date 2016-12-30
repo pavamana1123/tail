@@ -94,6 +94,7 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWatcher) {
 
 	defer RemoveWatch(fw.Filename)
+	defer t.Done()
 
 	events := Events(fw.Filename)
 
@@ -200,7 +201,7 @@ func getSymlinkPath(path string) (bool, string) {
 	dirs := strings.Split(path, "/")
 	depth := len(dirs)
 
-	for i := 0; i < depth; i++ {
+	for i := 0; i < depth-1; i++ {
 
 		tpath := strings.Join(dirs[:depth-i], "/")
 
