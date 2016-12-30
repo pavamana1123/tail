@@ -8,9 +8,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
+
+	"strings"
 
 	"github.com/hpcloud/tail/util"
 	"gopkg.in/fsnotify.v1"
@@ -74,119 +75,146 @@ func (fw *InotifyFileWatcher) BlockUntilExists(t *tomb.Tomb) error {
 }
 
 func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChanges, error) {
+
 	err := Watch(fw.Filename)
 	if err != nil {
 		return nil, err
 	}
-
 	changes := NewFileChanges()
 	fw.Size = pos
-
-	stopPoll := make(chan struct{}, 1)
-
-	// Polling func for SymLinkChange
-	go func() {
-
-		symLinkPath := strings.SplitAfter(fw.Filename, "current")[0]
-
-		fileInfo, err := os.Lstat(symLinkPath)
-		if err != nil {
-			log.Println("Error: Unable to open file: ", err.Error())
-			return
-		}
-
-		// Return if not a symlink
-		if fileInfo.Mode()&os.ModeSymlink != os.ModeSymlink {
-			return
-		}
-
-		var targetNew, targetOld string
-
-	retry:
-		targetOld, err = os.Readlink(symLinkPath)
-		if err != nil {
-			log.Println("Readlink old:", fw.Filename, err.Error())
-			<-time.After(1 * time.Second)
-			goto retry
-		}
-
-		for {
-			select {
-			case <-stopPoll:
-				return
-			default:
-				targetNew, err = os.Readlink(symLinkPath)
-				if err != nil {
-					log.Println("Readlink new:", fw.Filename, err.Error())
-					break
-				} else {
-					if targetNew != targetOld {
-						changes.NotifySymLinkChanged()
-						targetOld = targetNew
-					}
-				}
-			}
-			<-time.After(1 * time.Second)
-		}
-	}()
-
-	// Event notification func for other changes
-	go func() {
-
-		defer func() {
-			RemoveWatch(fw.Filename)
-			stopPoll <- struct{}{}
-			t.Done()
-		}()
-
-		events := Events(fw.Filename)
-
-		for {
-			prevSize := fw.Size
-
-			var evt fsnotify.Event
-			var ok bool
-
-			select {
-			case evt, ok = <-events:
-				if !ok {
-					return
-				}
-				break
-			case <-t.Dying():
-				return
-			}
-
-			switch {
-			case evt.Op&fsnotify.Remove == fsnotify.Remove:
-				fallthrough
-
-			case evt.Op&fsnotify.Rename == fsnotify.Rename:
-				changes.NotifyDeleted()
-				return
-
-			case evt.Op&fsnotify.Write == fsnotify.Write:
-				fi, err := os.Stat(fw.Filename)
-				if err != nil {
-					if os.IsNotExist(err) {
-						changes.NotifyDeleted()
-						return
-					}
-					// XXX: report this error back to the user
-					util.Fatal("Failed to stat file %v: %v", fw.Filename, err)
-				}
-				fw.Size = fi.Size()
-
-				if prevSize > 0 && prevSize > fw.Size {
-					changes.NotifyTruncated()
-				} else {
-					changes.NotifyModified()
-				}
-				prevSize = fw.Size
-
-			}
-		}
-	}()
+	// polling for changes in symlink target, if symlink exists
+	// if path does not contain symlinks, the go routine stops
+	go changes.detectSymlinkChanges(t, fw)
+	// detecting file events other than symlink change.
+	go changes.detectInotifyChanges(t, fw)
 
 	return changes, nil
+}
+
+func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWatcher) {
+
+	defer RemoveWatch(fw.Filename)
+
+	events := Events(fw.Filename)
+
+	for {
+		prevSize := fw.Size
+
+		var evt fsnotify.Event
+		var ok bool
+
+		select {
+		case evt, ok = <-events:
+			if !ok {
+				return
+			}
+			break
+		case <-t.Dying():
+			return
+		}
+
+		switch {
+		case evt.Op&fsnotify.Remove == fsnotify.Remove:
+			fallthrough
+
+		case evt.Op&fsnotify.Rename == fsnotify.Rename:
+			changes.NotifyDeleted()
+			return
+
+		case evt.Op&fsnotify.Write == fsnotify.Write:
+			fi, err := os.Stat(fw.Filename)
+			if err != nil {
+				if os.IsNotExist(err) {
+					changes.NotifyDeleted()
+					return
+				}
+				// XXX: report this error back to the user
+				util.Fatal("Failed to stat file %v: %v", fw.Filename, err)
+			}
+			fw.Size = fi.Size()
+
+			if prevSize > 0 && prevSize > fw.Size {
+				changes.NotifyTruncated()
+			} else {
+				changes.NotifyModified()
+			}
+			prevSize = fw.Size
+
+		}
+	}
+}
+
+func (changes *FileChanges) detectSymlinkChanges(t *tomb.Tomb, fw *InotifyFileWatcher) {
+
+	isSymLink, symlinkPath := getSymlinkPath(fw.Filename)
+
+	if !isSymLink {
+		return
+	}
+
+retry:
+	target, err := os.Readlink(symlinkPath)
+	if err != nil {
+		log.Println("Readlink:", symlinkPath, err.Error())
+		select {
+		case <-time.After(1 * time.Second):
+			goto retry
+		case <-t.Dying():
+			return
+		}
+
+	}
+
+	changes.pollSymlinkForChange(t, symlinkPath, target)
+
+}
+
+func (changes *FileChanges) pollSymlinkForChange(t *tomb.Tomb, symlinkPath, targetOld string) {
+
+	var (
+		target string
+		err    error
+	)
+
+	for {
+		select {
+		case <-t.Dying():
+			return
+		default:
+			target, err = os.Readlink(symlinkPath)
+			if err != nil {
+				log.Println("Readlink new:", symlinkPath, err.Error())
+				break
+			} else {
+				if target != targetOld {
+					changes.NotifySymLinkChanged()
+					targetOld = target
+				}
+			}
+		}
+		<-time.After(1 * time.Second)
+	}
+}
+
+func getSymlinkPath(path string) (bool, string) {
+	dirs := strings.Split(path, "/")
+	depth := len(dirs)
+
+	for i := 0; i < depth; i++ {
+
+		tpath := strings.Join(dirs[:depth-i], "/")
+
+		fileInfo, err := os.Lstat(tpath)
+		if err != nil {
+			log.Println("Error: Unable to open filepath: ", tpath, err.Error())
+			continue
+		}
+
+		// Return if tpath is a symlink
+		if fileInfo.Mode()&os.ModeSymlink == os.ModeSymlink {
+			return true, tpath
+		}
+	}
+
+	return false, path
 }
