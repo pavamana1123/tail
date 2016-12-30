@@ -86,8 +86,7 @@ type Tail struct {
 	watcher watch.FileWatcher
 	changes *watch.FileChanges
 
-	tomb.Tomb   // provides: Done, Kill, Dying
-	watcherTomb *tomb.Tomb
+	tomb.Tomb // provides: Done, Kill, Dying
 
 	lk sync.Mutex
 }
@@ -132,8 +131,6 @@ func TailFile(filename string, config Config) (*Tail, error) {
 			return nil, err
 		}
 	}
-
-	t.watcherTomb = new(tomb.Tomb)
 
 	go t.tailFileSync()
 
@@ -196,6 +193,7 @@ func (tail *Tail) close() {
 
 	close(tail.Lines)
 	tail.closeFile()
+	tail.Done()
 }
 
 func (tail *Tail) closeFile() {
@@ -213,7 +211,7 @@ func (tail *Tail) reopen() error {
 		if err != nil {
 			if os.IsNotExist(err) {
 				tail.Logger.Printf("Waiting for %s to appear...", tail.Filename)
-				if err := tail.watcher.BlockUntilExists(tail.watcherTomb); err != nil {
+				if err := tail.watcher.BlockUntilExists(&tail.Tomb); err != nil {
 					if err == tomb.ErrDying {
 						return err
 					}
@@ -234,17 +232,8 @@ func (tail *Tail) reopenTarget() error {
 }
 
 func (tail *Tail) renewWatcher() {
-	tail.closeWatcher()
-
 	tail.watcher = watch.NewInotifyFileWatcher(tail.Filename)
 	tail.changes = nil
-
-	tail.watcherTomb = new(tomb.Tomb)
-}
-
-func (tail *Tail) closeWatcher() {
-	tail.watcherTomb.Kill(nil)
-	tail.watcherTomb.Wait()
 }
 
 func (tail *Tail) readLine() (string, error) {
@@ -265,16 +254,7 @@ func (tail *Tail) readLine() (string, error) {
 }
 
 func (tail *Tail) tailFileSync() {
-	defer func() {
-
-		if tail.changes != nil {
-			log.Println()
-			tail.closeWatcher()
-		}
-		tail.close()
-		tail.Done()
-
-	}()
+	defer tail.close()
 
 	if !tail.MustExist {
 		// deferred first open.
@@ -379,7 +359,7 @@ func (tail *Tail) waitForChanges() error {
 			log.Println("tail.file.Seek:", err.Error())
 			return err
 		}
-		tail.changes, err = tail.watcher.ChangeEvents(tail.watcherTomb, pos)
+		tail.changes, err = tail.watcher.ChangeEvents(&tail.Tomb, pos)
 		if err != nil {
 			log.Println("tail.watcher.ChangeEvents:", err.Error())
 			return err

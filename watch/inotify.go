@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"strings"
@@ -82,19 +83,22 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	}
 	changes := NewFileChanges()
 	fw.Size = pos
+
+	var once sync.Once
+	// common tomb for detectSymlinkChanges and detectInotifyChanges go routines
+	ct := new(tomb.Tomb)
+
 	// polling for changes in symlink target, if symlink exists
 	// if path does not contain symlinks, the go routine stops
-	go changes.detectSymlinkChanges(t, fw)
+	go changes.detectSymlinkChanges(t, ct, &once, fw)
 	// detecting file events other than symlink change.
-	go changes.detectInotifyChanges(t, fw)
-
+	go changes.detectInotifyChanges(t, ct, &once, fw)
 	return changes, nil
 }
 
-func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWatcher) {
+func (changes *FileChanges) detectInotifyChanges(t, ct *tomb.Tomb, once *sync.Once, fw *InotifyFileWatcher) {
 
 	defer RemoveWatch(fw.Filename)
-	defer t.Done()
 
 	events := Events(fw.Filename)
 
@@ -107,10 +111,13 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 		select {
 		case evt, ok = <-events:
 			if !ok {
+				once.Do(func() { ct.Kill(nil) })
 				return
 			}
 			break
 		case <-t.Dying():
+			return
+		case <-ct.Dying():
 			return
 		}
 
@@ -145,7 +152,7 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 	}
 }
 
-func (changes *FileChanges) detectSymlinkChanges(t *tomb.Tomb, fw *InotifyFileWatcher) {
+func (changes *FileChanges) detectSymlinkChanges(t, ct *tomb.Tomb, once *sync.Once, fw *InotifyFileWatcher) {
 
 	isSymLink, symlinkPath := getSymlinkPath(fw.Filename)
 
@@ -154,7 +161,7 @@ func (changes *FileChanges) detectSymlinkChanges(t *tomb.Tomb, fw *InotifyFileWa
 	}
 
 retry:
-	target, err := os.Readlink(symlinkPath)
+	target, err := getInode(symlinkPath)
 	if err != nil {
 		log.Println("Readlink:", symlinkPath, err.Error())
 		select {
@@ -162,18 +169,20 @@ retry:
 			goto retry
 		case <-t.Dying():
 			return
+		case <-ct.Dying():
+			return
 		}
 
 	}
 
-	changes.pollSymlinkForChange(t, symlinkPath, target)
+	changes.pollSymlinkForChange(t, ct, once, symlinkPath, target)
 
 }
 
-func (changes *FileChanges) pollSymlinkForChange(t *tomb.Tomb, symlinkPath, targetOld string) {
+func (changes *FileChanges) pollSymlinkForChange(t, ct *tomb.Tomb, once *sync.Once, symlinkPath string, targetOld uint64) {
 
 	var (
-		target string
+		target uint64
 		err    error
 	)
 
@@ -182,12 +191,13 @@ func (changes *FileChanges) pollSymlinkForChange(t *tomb.Tomb, symlinkPath, targ
 		case <-t.Dying():
 			return
 		default:
-			target, err = os.Readlink(symlinkPath)
+			target, err = getInode(symlinkPath)
 			if err != nil {
 				log.Println("Readlink new:", symlinkPath, err.Error())
 				break
 			} else {
 				if target != targetOld {
+					once.Do(func() { ct.Kill(nil) })
 					changes.NotifySymLinkChanged()
 					targetOld = target
 				}
@@ -218,4 +228,12 @@ func getSymlinkPath(path string) (bool, string) {
 	}
 
 	return false, path
+}
+
+func getInode(path string) (uint64, error) {
+	var stat syscall.Stat_t
+	if err := syscall.Stat(path, &stat); err != nil {
+		return 0, err
+	}
+	return stat.Ino, nil
 }
