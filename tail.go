@@ -220,16 +220,6 @@ func (tail *Tail) reopen() error {
 	return nil
 }
 
-func (tail *Tail) reopenTarget() error {
-	tail.renewWatcher()
-	return tail.reopen()
-}
-
-func (tail *Tail) renewWatcher() {
-	tail.watcher = watch.NewInotifyFileWatcher(tail.Filename)
-	tail.changes = nil
-}
-
 func (tail *Tail) readLine() ([]byte, error) {
 
 	tail.lk.Lock()
@@ -363,6 +353,7 @@ func (tail *Tail) waitForChanges() error {
 		return nil
 	case <-tail.changes.Deleted:
 		if tail.ReOpen {
+			tail.changes = nil
 			// XXX: we must not log from a library.
 			tail.Logger.Printf("Re-opening moved/deleted file %s ...", tail.Filename)
 			if err := tail.reopen(); err != nil {
@@ -371,16 +362,18 @@ func (tail *Tail) waitForChanges() error {
 			}
 			tail.Logger.Printf("Successfully reopened %s", tail.Filename)
 			tail.openReader()
-			tail.changes = nil
 			return nil
 		} else {
 			tail.Logger.Printf("Stopping tail as file no longer exists: %s", tail.Filename)
 			return ErrStop
 		}
 	case <-tail.changes.SymLinkChanged:
+
+		tail.watcher = watch.NewInotifyFileWatcher(tail.Filename)
+		tail.changes = nil
 		// Always reopen files if symlink target is changed (Follow is true)
 		tail.Logger.Printf("Re-opening new symlink target file %s ...", tail.Filename)
-		if err := tail.reopenTarget(); err != nil {
+		if err := tail.reopen(); err != nil {
 			return err
 		}
 		tail.Logger.Printf("Successfully opened %s", tail.Filename)
