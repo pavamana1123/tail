@@ -12,7 +12,6 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -27,14 +26,9 @@ var (
 )
 
 type Line struct {
-	Text string
+	Text []byte
 	Time time.Time
 	Err  error // Error from tail
-}
-
-// NewLine returns a Line with present time.
-func NewLine(text string) *Line {
-	return &Line{text, time.Now(), nil}
 }
 
 // SeekInfo represents arguments to `os.Seek`
@@ -236,7 +230,7 @@ func (tail *Tail) renewWatcher() {
 	tail.changes = nil
 }
 
-func (tail *Tail) readLine() (string, error) {
+func (tail *Tail) readLine() ([]byte, error) {
 
 	tail.lk.Lock()
 	lineBytes, err := tail.reader.ReadSlice(10) //10 - byte value for \n
@@ -245,12 +239,10 @@ func (tail *Tail) readLine() (string, error) {
 		// Note ReadString "returns the data read before the error" in
 		// case of an error, including EOF, so we return it as is. The
 		// caller is expected to process it if err is EOF.
-		return string(lineBytes), err
+		return lineBytes, err
 	}
 
-	lineString := strings.TrimRight(string(lineBytes), "\n")
-
-	return lineString, err
+	return lineBytes[:len(lineBytes)-1], err // removing the last byte - \n
 }
 
 func (tail *Tail) tailFileSync() {
@@ -281,7 +273,7 @@ func (tail *Tail) tailFileSync() {
 
 	var offset int64 = 0
 	var err error
-	var line string
+	var line []byte
 
 	// Read line by line.
 	for {
@@ -304,13 +296,13 @@ func (tail *Tail) tailFileSync() {
 			tail.sendLine(line)
 		} else if err == io.EOF {
 			if !tail.Follow {
-				if line != "" {
+				if len(line) != 0 {
 					tail.sendLine(line)
 				}
 				return
 			}
 
-			if tail.Follow && line != "" {
+			if tail.Follow && len(line) != 0 {
 				// this has the potential to never return the last line if
 				// it's not followed by a newline; seems a fair trade here
 				err := tail.seekTo(SeekInfo{Offset: offset, Whence: 0})
@@ -434,7 +426,7 @@ func (tail *Tail) seekTo(pos SeekInfo) error {
 
 // sendLine sends the line(s) to Lines channel, splitting longer lines
 // if necessary. Return false if rate limit is reached.
-func (tail *Tail) sendLine(line string) bool {
+func (tail *Tail) sendLine(line []byte) bool {
 
 	tail.Lines <- &Line{line, time.Now(), nil}
 
