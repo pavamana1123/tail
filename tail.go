@@ -229,10 +229,10 @@ func (tail *Tail) readLine() ([]byte, error) {
 		// Note ReadString "returns the data read before the error" in
 		// case of an error, including EOF, so we return it as is. The
 		// caller is expected to process it if err is EOF.
-		return lineBytes, err
+		return append(lineBytes, 10), err
 	}
 
-	return lineBytes[:len(lineBytes)-1], err // removing the last byte - \n
+	return lineBytes, err // removing the last byte - \n
 }
 
 func (tail *Tail) tailFileSync() {
