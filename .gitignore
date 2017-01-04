@@ -1,3 +1,16 @@
 .test
 .go
+.logs/
+.vscode/
+batch_test.go
+kiltest/
+log
+logcreate.sh
+symtest/
+trace-flnf.out
+trace-ring.out
+trace-scribe.out
+trace-tail.out
+trace-tailer.out
+trace.out
 

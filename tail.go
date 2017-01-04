@@ -13,7 +13,6 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/pavamana1123/tail/ratelimiter"
 	"github.com/pavamana1123/tail/util"
@@ -27,7 +26,6 @@ var (
 
 type Line struct {
 	Text []byte
-	Time time.Time
 	Err  error // Error from tail
 }
 
@@ -421,7 +419,7 @@ func (tail *Tail) seekTo(pos SeekInfo) error {
 // if necessary. Return false if rate limit is reached.
 func (tail *Tail) sendLine(line []byte) bool {
 
-	tail.Lines <- &Line{line, time.Now(), nil}
+	tail.Lines <- &Line{line, nil}
 
 	return true
 }
