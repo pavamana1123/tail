@@ -142,13 +142,13 @@ func (tail *Tail) Tell() (offset int64, err error) {
 		return
 	}
 
-	tail.lk.Lock()
-	defer tail.lk.Unlock()
 	if tail.reader == nil {
 		return
 	}
 
+	tail.lk.Lock()
 	offset -= int64(tail.reader.Buffered())
+	tail.lk.Unlock()
 	return
 }
 
@@ -224,9 +224,6 @@ func (tail *Tail) readLine() ([]byte, error) {
 	lineBytes, err := tail.reader.ReadSlice(10) //10 - byte value for \n
 	tail.lk.Unlock()
 	if err != nil {
-		// Note ReadString "returns the data read before the error" in
-		// case of an error, including EOF, so we return it as is. The
-		// caller is expected to process it if err is EOF.
 		return append(lineBytes, 10), err
 	}
 
