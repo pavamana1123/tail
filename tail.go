@@ -227,7 +227,7 @@ func (tail *Tail) readLine() ([]byte, error) {
 		return append(lineBytes, 10), err
 	}
 
-	return lineBytes, err // removing the last byte - \n
+	return lineBytes[:len(lineBytes)-1], err // removing the last byte - \n
 }
 
 func (tail *Tail) tailFileSync() {
