@@ -223,10 +223,18 @@ func (tail *Tail) readLine() ([]byte, error) {
 	tail.lk.Lock()
 	lineBytes, err := tail.reader.ReadSlice(10) //10 - byte value for \n
 	tail.lk.Unlock()
+	// log.Println("line:", string(lineBytes))
+
 	if err != nil {
-		return append(lineBytes, 10), err
+		if err == bufio.ErrBufferFull {
+			// log.Println("@buferr:", string(append(lineBytes, 10)))
+			return append(lineBytes, 10), err
+		}
+		// log.Println("@err:", string(lineBytes))
+		return lineBytes, err
 	}
 
+	// log.Println("@noerr:", string(lineBytes[:len(lineBytes)-1]))
 	return lineBytes[:len(lineBytes)-1], err // removing the last byte - \n
 }
 
@@ -417,6 +425,8 @@ func (tail *Tail) seekTo(pos SeekInfo) error {
 func (tail *Tail) sendLine(line []byte) bool {
 
 	tail.Lines <- &Line{line, nil}
+
+	// log.Println("line sent:", string(line))
 
 	return true
 }
