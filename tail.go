@@ -220,22 +220,14 @@ func (tail *Tail) reopen() error {
 
 func (tail *Tail) readLine() ([]byte, error) {
 
+	var lineBytes []byte
+	var err error
+
 	tail.lk.Lock()
-	lineBytes, err := tail.reader.ReadSlice(10) //10 - byte value for \n
+	lineBytes, _, err = tail.reader.ReadLine()
 	tail.lk.Unlock()
-	// log.Println("line:", string(lineBytes))
 
-	if err != nil {
-		if err == bufio.ErrBufferFull {
-			// log.Println("@buferr:", string(append(lineBytes, 10)))
-			return append(lineBytes, 10), err
-		}
-		// log.Println("@err:", string(lineBytes))
-		return lineBytes, err
-	}
-
-	// log.Println("@noerr:", string(lineBytes[:len(lineBytes)-1]))
-	return lineBytes[:len(lineBytes)-1], err // removing the last byte - \n
+	return lineBytes, err
 }
 
 func (tail *Tail) tailFileSync() {
@@ -400,7 +392,7 @@ func (tail *Tail) waitForChanges() error {
 func (tail *Tail) openReader() {
 	if tail.MaxLineSize > 0 {
 		// add 2 to account for newline characters
-		tail.reader = bufio.NewReaderSize(tail.file, tail.MaxLineSize+2)
+		tail.reader = bufio.NewReaderSize(tail.file, tail.MaxLineSize)
 	} else {
 		tail.reader = bufio.NewReader(tail.file)
 	}
