@@ -21,8 +21,9 @@ import (
 
 // InotifyFileWatcher uses inotify to monitor file changes.
 type InotifyFileWatcher struct {
-	Filename string
-	Size     int64
+	Filename     string
+	RealFileName string
+	Size         int64
 }
 
 var (
@@ -30,7 +31,13 @@ var (
 )
 
 func NewInotifyFileWatcher(filename string) *InotifyFileWatcher {
-	fw := &InotifyFileWatcher{filepath.Clean(filename), 0}
+
+	realFileName, err := filepath.EvalSymlinks(filepath.Clean(filename))
+	if err != nil {
+		return nil
+	}
+
+	fw := &InotifyFileWatcher{Filename: filename, RealFileName: realFileName, Size: 0}
 	return fw
 }
 
@@ -77,7 +84,7 @@ func (fw *InotifyFileWatcher) BlockUntilExists(t *tomb.Tomb) error {
 
 func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChanges, error) {
 
-	err := Watch(fw.Filename)
+	err := Watch(fw.RealFileName)
 	if err != nil {
 		return nil, err
 	}
@@ -98,9 +105,9 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 func (changes *FileChanges) detectInotifyChanges(t, ct *tomb.Tomb, once *sync.Once, fw *InotifyFileWatcher) {
 
-	defer RemoveWatch(fw.Filename)
+	defer RemoveWatch(fw.RealFileName)
 
-	events := Events(fw.Filename)
+	events := Events(fw.RealFileName)
 
 	for {
 		prevSize := fw.Size
@@ -130,14 +137,14 @@ func (changes *FileChanges) detectInotifyChanges(t, ct *tomb.Tomb, once *sync.On
 			return
 
 		case evt.Op&fsnotify.Write == fsnotify.Write:
-			fi, err := os.Stat(fw.Filename)
+			fi, err := os.Stat(fw.RealFileName)
 			if err != nil {
 				if os.IsNotExist(err) {
 					changes.NotifyDeleted()
 					return
 				}
 				// XXX: report this error back to the user
-				util.Fatal("Failed to stat file %v: %v", fw.Filename, err)
+				util.Fatal("Failed to stat file %v: %v", fw.RealFileName, err)
 			}
 			fw.Size = fi.Size()
 
@@ -208,6 +215,7 @@ func (changes *FileChanges) pollSymlinkForChange(t, ct *tomb.Tomb, once *sync.On
 }
 
 func getSymlinkPath(path string) (bool, string) {
+
 	dirs := strings.Split(path, "/")
 	depth := len(dirs)
 
