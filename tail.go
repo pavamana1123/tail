@@ -114,9 +114,6 @@ func TailFile(filename string, config Config) (*Tail, error) {
 		t.watcher = watch.NewPollingFileWatcher(filename)
 	} else {
 		t.watcher = watch.NewInotifyFileWatcher(filename)
-		if t.watcher == nil {
-			return nil, errors.New("Unable to create filewatcher for " + t.Filename)
-		}
 	}
 
 	if t.MustExist {
@@ -271,6 +268,7 @@ func (tail *Tail) tailFileSync() {
 			offset, err = tail.Tell()
 			if err != nil {
 				log.Println("Tell:", err.Error())
+
 				tail.Kill(err)
 				return
 			}
@@ -367,9 +365,6 @@ func (tail *Tail) waitForChanges() error {
 	case <-tail.changes.SymLinkChanged:
 
 		tail.watcher = watch.NewInotifyFileWatcher(tail.Filename)
-		if tail.watcher == nil {
-			return errors.New("Unable to create filewatcher for " + tail.Filename)
-		}
 		tail.changes = nil
 		// Always reopen files if symlink target is changed (Follow is true)
 		tail.Logger.Printf("Re-opening new symlink target file %s ...", tail.Filename)
