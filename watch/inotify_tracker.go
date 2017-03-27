@@ -98,6 +98,9 @@ func RemoveWatchCreate(fname string) {
 }
 
 func remove(winfo *watchInfo) {
+
+	defer log.Println("Watch removed:", winfo.fname, winfo.isCreate(), winfo.op)
+
 	// start running the shared InotifyTracker if not already running
 	once.Do(goRun)
 
