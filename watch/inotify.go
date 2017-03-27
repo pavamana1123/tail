@@ -108,6 +108,9 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 
 	defer func() {
 		RemoveWatch(fw.Filename)
+		if symCh {
+			changes.NotifySymLinkChanged()
+		}
 		log.Println("Exiting detectInotifyChanges")
 	}()
 
@@ -120,8 +123,9 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 	}
 
 	var (
-		evt fsnotify.Event
-		ok  bool
+		evt   fsnotify.Event
+		symCh bool
+		ok    bool
 	)
 
 	for {
@@ -136,7 +140,8 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 			break
 		case <-symlinkChange:
 			log.Println("Symlink changed")
-			changes.NotifySymLinkChanged()
+			symCh = true
+			// changes.NotifySymLinkChanged()
 			return
 		case <-t.Dying():
 			log.Println("@case <-t.Dying():@detectInotifyChanges")
@@ -191,7 +196,7 @@ func (changes *FileChanges) detectSymlinkChanges(t *tomb.Tomb, fw *InotifyFileWa
 retry:
 	target, err := getInode(symlinkPath)
 	if err != nil {
-		log.Println("Readlink:", symlinkPath, err.Error())
+		log.Println("getInode:", symlinkPath, err.Error())
 		select {
 		case <-time.After(1 * time.Second):
 			goto retry
