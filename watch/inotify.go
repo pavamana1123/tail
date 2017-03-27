@@ -27,8 +27,13 @@ type InotifyFileWatcher struct {
 }
 
 var (
-	wg sync.WaitGroup
+	wg         sync.WaitGroup
+	notSymLink error
 )
+
+func init() {
+	notSymLink = errors.New("Not a symlink")
+}
 
 func NewInotifyFileWatcher(filename string) *InotifyFileWatcher {
 	fw := &InotifyFileWatcher{filepath.Clean(filename), 0}
@@ -80,6 +85,14 @@ func (fw *InotifyFileWatcher) BlockUntilExists(t *tomb.Tomb) error {
 	panic("unreachable")
 }
 
+// func getBrokenPath(path string) (string, error) {
+// 	tpath := strings.Split(path, "/")
+// 	var pathLevelUp string
+// 	if len(tpath) > 0 {
+// 		pathLevelUp = strings.Join(tpath[:len(tpath)-1], "/")
+// 	}
+// }
+
 func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChanges, error) {
 
 	err := Watch(fw.Filename)
@@ -106,6 +119,12 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 
 	log.Println("@detectInotifyChanges")
 
+	var (
+		evt   fsnotify.Event
+		symCh bool
+		ok    bool
+	)
+
 	defer func() {
 		RemoveWatch(fw.Filename)
 		if symCh {
@@ -119,14 +138,10 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 	symlinkChange, err := changes.detectSymlinkChanges(t, fw)
 	if err != nil {
 		// error occurs only if path is not a symlink
-		log.Println(err)
+		if err == notSymLink {
+			log.Println(err)
+		}
 	}
-
-	var (
-		evt   fsnotify.Event
-		symCh bool
-		ok    bool
-	)
 
 	for {
 		prevSize := fw.Size
@@ -190,23 +205,15 @@ func (changes *FileChanges) detectSymlinkChanges(t *tomb.Tomb, fw *InotifyFileWa
 	isSymLink, symlinkPath := getSymlinkPath(fw.Filename)
 
 	if !isSymLink {
-		return symLinkChanged, errors.New("Not a symlink: " + fw.Filename)
+		return symLinkChanged, notSymLink
 	}
 
 retry:
 	target, err := getInode(symlinkPath)
 	if err != nil {
 		log.Println("getInode:", symlinkPath, err.Error())
-		select {
-		case <-time.After(1 * time.Second):
-			goto retry
-			// case <-t.Dying():
-			// 	return symLinkChanged, err
-			// case <-ct.Dead():
-			// 	log.Println("@case <-ct.Dead():@getInode")
-			// 	return
-		}
-
+		NewInotifyFileWatcher(symlinkPath).BlockUntilExists(t)
+		goto retry
 	}
 
 	go changes.pollSymlinkForChange(t, symLinkChanged, symlinkPath, target)
@@ -236,8 +243,7 @@ func (changes *FileChanges) pollSymlinkForChange(t *tomb.Tomb, symLinkChanged ch
 		default:
 			target, err = getInode(symlinkPath)
 			if err != nil {
-				log.Println("getInode:", err, symlinkPath)
-				<-time.After(1 * time.Second)
+				NewInotifyFileWatcher(symlinkPath).BlockUntilExists(t)
 				continue
 			}
 			if target != targetOld {
