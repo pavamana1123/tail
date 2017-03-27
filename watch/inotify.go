@@ -47,10 +47,7 @@ func (fw *InotifyFileWatcher) BlockUntilExists(t *tomb.Tomb) error {
 		return err
 	}
 
-	defer func() {
-		RemoveWatchCreate(fw.Filename)
-		defer log.Println("Create watch removed inside BlockUntilExists")
-	}()
+	defer RemoveWatchCreate(fw.Filename)
 
 	// Do a real check now as the file might have been created before
 	// calling `WatchFlags` above.
@@ -102,22 +99,12 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 	changes := NewFileChanges()
 	fw.Size = pos
-	log.Println("Setting fw.Size:", pos)
 
-	// var once sync.Once
-	// common tomb for detectSymlinkChanges and detectInotifyChanges go routines
-	// ct := new(tomb.Tomb)
-
-	// polling for changes in symlink target, if symlink exists
-	// if path does not contain symlinks, the go routine stops
-	// detecting file events other than symlink change.
 	go changes.detectInotifyChanges(t, fw)
 	return changes, nil
 }
 
 func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWatcher) {
-
-	log.Println("@detectInotifyChanges")
 
 	var (
 		evt   fsnotify.Event
@@ -130,7 +117,6 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 		if symCh {
 			changes.NotifySymLinkChanged()
 		}
-		log.Println("Exiting detectInotifyChanges")
 	}()
 
 	events := Events(fw.Filename)
@@ -148,22 +134,15 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 
 		select {
 		case evt, ok = <-events:
-			log.Println("@case evt, ok = <-events:", evt, ok)
 			if !ok {
 				return
 			}
 			break
 		case <-symlinkChange:
-			log.Println("Symlink changed")
 			symCh = true
-			// changes.NotifySymLinkChanged()
 			return
 		case <-t.Dying():
-			log.Println("@case <-t.Dying():@detectInotifyChanges")
 			return
-			// case <-ct.Dead():
-			// 	log.Println("@case <-ct.Dead():@detectInotifyChanges")
-			// 	return
 		}
 
 		switch {
@@ -185,7 +164,6 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 				util.Fatal("Failed to stat file %v: %v", fw.Filename, err)
 			}
 			fw.Size = fi.Size()
-			log.Println("fsnotify.Write detected:fw.Size:", fw.Size)
 
 			if prevSize > 0 && prevSize > fw.Size {
 				changes.NotifyTruncated()
@@ -211,7 +189,6 @@ func (changes *FileChanges) detectSymlinkChanges(t *tomb.Tomb, fw *InotifyFileWa
 retry:
 	target, err := getInode(symlinkPath)
 	if err != nil {
-		log.Println("getInode:", symlinkPath, err.Error())
 		NewInotifyFileWatcher(symlinkPath).BlockUntilExists(t)
 		goto retry
 	}
@@ -224,10 +201,6 @@ retry:
 
 func (changes *FileChanges) pollSymlinkForChange(t *tomb.Tomb, symLinkChanged chan struct{}, symlinkPath string, targetOld uint64) {
 
-	defer log.Println("Exiting pollSymlinkForChange")
-
-	log.Println("@pollSymlinkForChange")
-
 	var (
 		target uint64
 		err    error
@@ -237,9 +210,6 @@ func (changes *FileChanges) pollSymlinkForChange(t *tomb.Tomb, symLinkChanged ch
 		select {
 		case <-t.Dying():
 			return
-		// case <-ct.Dead():
-		// 	log.Println("@case <-ct.Dead():@pollSymlinkForChange")
-		// 	return
 		default:
 			target, err = getInode(symlinkPath)
 			if err != nil {
@@ -248,7 +218,6 @@ func (changes *FileChanges) pollSymlinkForChange(t *tomb.Tomb, symLinkChanged ch
 			}
 			if target != targetOld {
 				symLinkChanged <- struct{}{}
-				log.Println("@symLinkChanged <- struct{}{}")
 				return
 			}
 

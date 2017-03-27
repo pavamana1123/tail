@@ -331,12 +331,7 @@ func (tail *Tail) tailFileSync() {
 // reopened if ReOpen is true. Truncated files are always reopened.
 func (tail *Tail) waitForChanges() error {
 
-	log.Println("@waitForChanges")
-
 	if tail.changes == nil {
-
-		log.Println("@tail.changes == nil")
-
 		pos, err := tail.file.Seek(0, os.SEEK_CUR)
 		if err != nil {
 			log.Println("tail.file.Seek:", err.Error())
@@ -347,8 +342,6 @@ func (tail *Tail) waitForChanges() error {
 			log.Println("tail.watcher.ChangeEvents:", err.Error())
 			return err
 		}
-
-		log.Println("@noerror(tail.changes == nil)")
 	}
 
 	select {
@@ -373,25 +366,21 @@ func (tail *Tail) waitForChanges() error {
 	case <-tail.changes.SymLinkChanged:
 
 		tail.changes = nil
-		log.Println("Re-opening new symlink target file ...", tail.Filename)
 		// Always reopen files if symlink target is changed (Follow is true)
-		// tail.Logger.Printf("Re-opening new symlink target file %s ...", tail.Filename)
+		tail.Logger.Printf("Re-opening new symlink target file %s ...", tail.Filename)
 		if err := tail.reopen(); err != nil {
 			return err
 		}
-		log.Println("Successfully opened %s", tail.Filename)
-		// tail.Logger.Printf("Successfully opened %s", tail.Filename)
+		tail.Logger.Printf("Successfully opened %s", tail.Filename)
 		tail.openReader()
 		return nil
 	case <-tail.changes.Truncated:
 		// Always reopen files if truncated (Follow is true)
-		log.Println("Re-opening truncated file %s ...", tail.Filename)
-		// tail.Logger.Printf("Re-opening truncated file %s ...", tail.Filename)
+		tail.Logger.Printf("Re-opening truncated file %s ...", tail.Filename)
 		if err := tail.reopen(); err != nil {
 			return err
 		}
-		log.Println("Successfully reopened truncated %s", tail.Filename)
-		// tail.Logger.Printf("Successfully reopened truncated %s", tail.Filename)
+		tail.Logger.Printf("Successfully reopened truncated %s", tail.Filename)
 		tail.openReader()
 		return nil
 	case <-tail.Dying():
