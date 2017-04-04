@@ -125,7 +125,7 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 	if err != nil {
 		// error occurs only if path is not a symlink
 		if err == notSymLink {
-			log.Println(err)
+			log.Println(err.Error(), ":", fw.Filename)
 		}
 	}
 

@@ -202,8 +202,8 @@ func (tail *Tail) reopen() error {
 		tail.file, err = OpenFile(tail.Filename)
 		if err != nil {
 			if os.IsNotExist(err) {
-				log.Println("Waiting for to appear...", tail.Filename)
-				// tail.Logger.Printf("Waiting for %s to appear...", tail.Filename)
+				// log.Println("Waiting for to appear...", tail.Filename)
+				tail.Logger.Printf("Waiting for %s to appear...", tail.Filename)
 				if err := tail.watcher.BlockUntilExists(&tail.Tomb); err != nil {
 					if err == tomb.ErrDying {
 						return err
