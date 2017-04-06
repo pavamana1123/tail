@@ -53,6 +53,7 @@ func (fw *InotifyFileWatcher) BlockUntilExists(t *tomb.Tomb) error {
 	// calling `WatchFlags` above.
 	if _, err = os.Stat(fw.Filename); !os.IsNotExist(err) {
 		// file exists, or stat returned an error.
+		log.Println("File exists, or stat returned an error.", err.Error())
 		return err
 	}
 
@@ -82,14 +83,6 @@ func (fw *InotifyFileWatcher) BlockUntilExists(t *tomb.Tomb) error {
 	panic("unreachable")
 }
 
-// func getBrokenPath(path string) (string, error) {
-// 	tpath := strings.Split(path, "/")
-// 	var pathLevelUp string
-// 	if len(tpath) > 0 {
-// 		pathLevelUp = strings.Join(tpath[:len(tpath)-1], "/")
-// 	}
-// }
-
 func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChanges, error) {
 
 	err := Watch(fw.Filename)
@@ -107,9 +100,8 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWatcher) {
 
 	var (
-		evt   fsnotify.Event
-		symCh bool
-		ok    bool
+		evt       fsnotify.Event
+		symCh, ok bool
 	)
 
 	defer func() {

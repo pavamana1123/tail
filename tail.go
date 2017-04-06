@@ -167,6 +167,14 @@ func (tail *Tail) StopAtEOF() error {
 var errStopAtEOF = errors.New("tail: stop at eof")
 
 func (tail *Tail) close() {
+
+	tail.updateTailPosition()
+	tail.closeFile()
+	tail.Done()
+	close(tail.Lines)
+}
+
+func (tail *Tail) updateTailPosition() {
 	if tail.Config.PosFile != "" {
 
 		newPos, err := tail.Tell()
@@ -182,10 +190,6 @@ func (tail *Tail) close() {
 		}
 
 	}
-
-	close(tail.Lines)
-	tail.closeFile()
-	tail.Done()
 }
 
 func (tail *Tail) closeFile() {
@@ -257,9 +261,11 @@ func (tail *Tail) tailFileSync() {
 
 	tail.openReader()
 
-	var offset int64 = 0
-	var err error
-	var line []byte
+	var (
+		offset int64
+		err    error
+		line   []byte
+	)
 
 	// Read line by line.
 	for {
@@ -269,7 +275,6 @@ func (tail *Tail) tailFileSync() {
 			offset, err = tail.Tell()
 			if err != nil {
 				log.Println("Tell:", err.Error())
-
 				tail.Kill(err)
 				return
 			}
@@ -294,7 +299,6 @@ func (tail *Tail) tailFileSync() {
 				err := tail.seekTo(SeekInfo{Offset: offset, Whence: 0})
 				if err != nil {
 					tail.Kill(err)
-
 					return
 				}
 			}
