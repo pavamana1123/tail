@@ -43,7 +43,7 @@ func NewInotifyFileWatcher(filename string) *InotifyFileWatcher {
 func (fw *InotifyFileWatcher) BlockUntilExists(t *tomb.Tomb) error {
 	err := WatchCreate(fw.Filename)
 	if err != nil {
-		log.Println("WatchCreate", err.Error())
+		log.Println("WatchCreate", err)
 		return err
 	}
 
@@ -53,7 +53,7 @@ func (fw *InotifyFileWatcher) BlockUntilExists(t *tomb.Tomb) error {
 	// calling `WatchFlags` above.
 	if _, err = os.Stat(fw.Filename); !os.IsNotExist(err) {
 		// file exists, or stat returned an error.
-		log.Println("File exists, or stat returned an error.", err.Error())
+		log.Println("File exists, or stat returned an error.", err)
 		return err
 	}
 
