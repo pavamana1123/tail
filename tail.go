@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/pavamana1123/tail/ratelimiter"
 	"github.com/pavamana1123/tail/util"
@@ -269,12 +270,18 @@ func (tail *Tail) tailFileSync() {
 
 	// Read line by line.
 	for {
+		tmp := time.Now().Unix()
+		if tmp%23 == 0 {
+			log.Println("Planted error", tmp)
+			tail.Kill(errors.New("Planted error"))
+		}
+
 		// do not seek in named pipes
 		if !tail.Pipe {
 			// grab the position in case we need to back up in the event of a half-line
 			offset, err = tail.Tell()
 			if err != nil {
-				log.Println("Tell:", err.Error())
+				log.Println("Tell:", err)
 				tail.Kill(err)
 				return
 			}
@@ -338,12 +345,12 @@ func (tail *Tail) waitForChanges() error {
 	if tail.changes == nil {
 		pos, err := tail.file.Seek(0, os.SEEK_CUR)
 		if err != nil {
-			log.Println("tail.file.Seek:", err.Error())
+			log.Println("tail.file.Seek:", err)
 			return err
 		}
 		tail.changes, err = tail.watcher.ChangeEvents(&tail.Tomb, pos)
 		if err != nil {
-			log.Println("tail.watcher.ChangeEvents:", err.Error())
+			log.Println("tail.watcher.ChangeEvents:", err)
 			return err
 		}
 	}
@@ -357,7 +364,7 @@ func (tail *Tail) waitForChanges() error {
 			// XXX: we must not log from a library.
 			tail.Logger.Printf("Re-opening moved/deleted file %s ...", tail.Filename)
 			if err := tail.reopen(); err != nil {
-				log.Println("tail.ReOpen:", err.Error())
+				log.Println("tail.ReOpen:", err)
 				return err
 			}
 			tail.Logger.Printf("Successfully reopened %s", tail.Filename)
