@@ -13,7 +13,6 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/pavamana1123/tail/ratelimiter"
 	"github.com/pavamana1123/tail/util"
@@ -270,11 +269,6 @@ func (tail *Tail) tailFileSync() {
 
 	// Read line by line.
 	for {
-		tmp := time.Now().Unix()
-		if tmp%23 == 0 {
-			log.Println("Planted error", tmp)
-			tail.Kill(errors.New("Planted error"))
-		}
 
 		// do not seek in named pipes
 		if !tail.Pipe {
