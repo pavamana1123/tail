@@ -139,9 +139,15 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 
 		switch {
 		case evt.Op&fsnotify.Remove == fsnotify.Remove:
+			log.Println("File", fw.Filename, "deleted")
 			fallthrough
 
+		// // it was seen that fsnotify package is returning Chmod event for file delete
+		// case evt.Op&fsnotify.Chmod == fsnotify.Chmod:
+		// 	fallthrough	
+
 		case evt.Op&fsnotify.Rename == fsnotify.Rename:
+			log.Println("File ", fw.Filename, "moved/renamed")
 			changes.NotifyDeleted()
 			return
 

@@ -73,6 +73,7 @@ type Tail struct {
 	Config
 
 	file   *os.File
+	File   *os.File
 	reader *bufio.Reader
 
 	watcher watch.FileWatcher
@@ -119,6 +120,7 @@ func TailFile(filename string, config Config) (*Tail, error) {
 	if t.MustExist {
 		var err error
 		t.file, err = OpenFile(t.Filename)
+		t.File = t.file
 		if err != nil {
 			return nil, err
 		}
