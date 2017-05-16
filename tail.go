@@ -72,7 +72,6 @@ type Tail struct {
 	Lines    chan *Line
 	Config
 
-	file   *os.File
 	File   *os.File
 	reader *bufio.Reader
 
@@ -119,8 +118,7 @@ func TailFile(filename string, config Config) (*Tail, error) {
 
 	if t.MustExist {
 		var err error
-		t.file, err = OpenFile(t.Filename)
-		t.File = t.file
+		t.File, err = OpenFile(t.Filename)
 		if err != nil {
 			return nil, err
 		}
@@ -136,10 +134,10 @@ func TailFile(filename string, config Config) (*Tail, error) {
 // it may readed one line in the chan(tail.Lines),
 // so it may lost one line.
 func (tail *Tail) Tell() (offset int64, err error) {
-	if tail.file == nil {
+	if tail.File == nil {
 		return
 	}
-	offset, err = tail.file.Seek(0, os.SEEK_CUR)
+	offset, err = tail.File.Seek(0, os.SEEK_CUR)
 	if err != nil {
 		return
 	}
@@ -195,9 +193,9 @@ func (tail *Tail) updateTailPosition() {
 }
 
 func (tail *Tail) closeFile() {
-	if tail.file != nil {
-		tail.file.Close()
-		tail.file = nil
+	if tail.File != nil {
+		tail.File.Close()
+		tail.File = nil
 	}
 }
 
@@ -205,7 +203,7 @@ func (tail *Tail) reopen() error {
 	tail.closeFile()
 	for {
 		var err error
-		tail.file, err = OpenFile(tail.Filename)
+		tail.File, err = OpenFile(tail.Filename)
 		if err != nil {
 			if os.IsNotExist(err) {
 				// log.Println("Waiting for to appear...", tail.Filename)
@@ -253,7 +251,7 @@ func (tail *Tail) tailFileSync() {
 
 	// Seek to requested location on first open of the file.
 	if tail.Location != nil {
-		_, err := tail.file.Seek(tail.Location.Offset, tail.Location.Whence)
+		_, err := tail.File.Seek(tail.Location.Offset, tail.Location.Whence)
 		// tail.Logger.Printf("Seeked %s - %+v\n", tail.Filename, tail.Location)
 		if err != nil {
 			tail.Killf("Seek error on %s: %s", tail.Filename, err)
@@ -339,9 +337,9 @@ func (tail *Tail) tailFileSync() {
 func (tail *Tail) waitForChanges() error {
 
 	if tail.changes == nil {
-		pos, err := tail.file.Seek(0, os.SEEK_CUR)
+		pos, err := tail.File.Seek(0, os.SEEK_CUR)
 		if err != nil {
-			log.Println("tail.file.Seek:", err)
+			log.Println("tail.File.Seek:", err)
 			return err
 		}
 		tail.changes, err = tail.watcher.ChangeEvents(&tail.Tomb, pos)
@@ -399,9 +397,9 @@ func (tail *Tail) waitForChanges() error {
 func (tail *Tail) openReader() {
 	if tail.MaxLineSize > 0 {
 		// add 2 to account for newline characters
-		tail.reader = bufio.NewReaderSize(tail.file, tail.MaxLineSize)
+		tail.reader = bufio.NewReaderSize(tail.File, tail.MaxLineSize)
 	} else {
-		tail.reader = bufio.NewReader(tail.file)
+		tail.reader = bufio.NewReader(tail.File)
 	}
 }
 
@@ -410,12 +408,12 @@ func (tail *Tail) seekEnd() error {
 }
 
 func (tail *Tail) seekTo(pos SeekInfo) error {
-	_, err := tail.file.Seek(pos.Offset, pos.Whence)
+	_, err := tail.File.Seek(pos.Offset, pos.Whence)
 	if err != nil {
 		return fmt.Errorf("Seek error on %s: %s", tail.Filename, err)
 	}
 	// Reset the read buffer whenever the file is re-seek'ed
-	tail.reader.Reset(tail.file)
+	tail.reader.Reset(tail.File)
 	return nil
 }
 
