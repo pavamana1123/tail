@@ -15,7 +15,7 @@ import (
 
 	"strings"
 
-	"github.com/hpcloud/tail/util"
+	"github.com/pavamana1123/tail/util"
 	"gopkg.in/fsnotify.v1"
 	"gopkg.in/tomb.v1"
 )
@@ -144,7 +144,7 @@ func (changes *FileChanges) detectInotifyChanges(t *tomb.Tomb, fw *InotifyFileWa
 
 		// // it was seen that fsnotify package is returning Chmod event for file delete
 		// case evt.Op&fsnotify.Chmod == fsnotify.Chmod:
-		// 	fallthrough	
+		// 	fallthrough
 
 		case evt.Op&fsnotify.Rename == fsnotify.Rename:
 			log.Println("File ", fw.Filename, "moved/renamed")
