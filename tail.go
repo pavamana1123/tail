@@ -386,7 +386,7 @@ func (tail *Tail) waitForChanges() error {
 			return err
 		}
 		tail.Logger.Printf("Successfully reopened truncated %s", tail.Filename)
-		tail.resetReader()
+		tail.openReader()
 		return nil
 	case <-tail.Dying():
 		return ErrStop
@@ -401,14 +401,6 @@ func (tail *Tail) openReader() {
 		tail.reader = bufio.NewReaderSize(tail.File, tail.MaxLineSize)
 	} else {
 		tail.reader = bufio.NewReader(tail.File)
-	}
-}
-
-func (tail *Tail) resetReader() {
-	if tail.reader != nil {
-		tail.reader.Reset(tail.File)
-	} else {
-		tail.openReader()
 	}
 }
 
