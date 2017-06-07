@@ -51,7 +51,7 @@ func (fw *InotifyFileWatcher) BlockUntilExists(t *tomb.Tomb) error {
 
 	// Do a real check now as the file might have been created before
 	// calling `WatchFlags` above.
-	if _, err = os.Stat(fw.Filename); !os.IsNotExist(err) {
+	if _, err = os.Stat(fw.Filename); err != nil && !os.IsNotExist(err) {
 		// file exists, or stat returned an error.
 		log.Println("File exists, or stat returned an error.", err)
 		return err
